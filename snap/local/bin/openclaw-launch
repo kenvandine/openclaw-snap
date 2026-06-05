@@ -1,0 +1,37 @@
+#!/bin/sh
+# openclaw-launch — wrapper that ensures openclaw finds its bundled Chromium.
+
+# Tell Playwright where the pre-installed Chromium lives.
+export PLAYWRIGHT_BROWSERS_PATH="$SNAP/usr/share/ms-playwright"
+
+# Make sure the workspace directory exists on first run.
+mkdir -p "$HOME/workspace"
+
+# Install and enable the gateway service on first run.  Uses /snap/openclaw/current
+# (always the active revision) so the unit file stays valid across snap updates.
+if ! systemctl --user is-enabled openclaw >/dev/null 2>&1; then
+  mkdir -p "$HOME/.config/systemd/user"
+  cp "$SNAP/share/systemd/user/openclaw.service" "$HOME/.config/systemd/user/openclaw.service"
+  systemctl --user daemon-reload 2>/dev/null || true
+  systemctl --user enable --now openclaw 2>/dev/null || true
+fi
+
+# Locate openclaw.mjs regardless of whether npm hoisted it or kept it nested.
+OPENCLAW_MJS=$(find "$SNAP/lib/node_modules" \
+  -name "openclaw.mjs" -path "*/openclaw/openclaw.mjs" | head -1)
+
+if [ -z "$OPENCLAW_MJS" ]; then
+  echo "openclaw: cannot locate openclaw.mjs under $SNAP/lib/node_modules" >&2
+  exit 1
+fi
+
+# When the user runs 'openclaw onboard' and a config already exists (e.g. set
+# up automatically by the service on first start), pass --auth-choice skip so
+# the wizard doesn't prompt for a provider or model — both are already set.
+CONFIG_FILE="$HOME/.openclaw/openclaw.json"
+if [ "$1" = "onboard" ] && [ -f "$CONFIG_FILE" ]; then
+  shift
+  exec "$SNAP/bin/node" "$OPENCLAW_MJS" onboard --auth-choice skip "$@"
+fi
+
+exec "$SNAP/bin/node" "$OPENCLAW_MJS" "$@"

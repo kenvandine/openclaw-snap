@@ -1,0 +1,179 @@
+name: openclaw
+base: core24
+adopt-info: openclaw
+summary: Local-first personal AI assistant
+description: |
+  OpenClaw is a local-first AI assistant that runs entirely on your machine.
+  It connects to your chosen AI model and reaches the outside world through
+  chat interfaces (Discord, Telegram, Slack, web UI, and more), performing
+  agentic tasks such as web browsing, file operations, code execution, and
+  scheduled jobs.
+
+  Unlike cloud-based AI assistants, OpenClaw keeps your data and conversations
+  local: nothing is sent to a third-party service beyond the API calls you
+  explicitly configure. You choose the model, you control the keys, and your
+  workspace files never leave your machine without your knowledge.
+
+  LOCAL AI
+
+  On first start OpenClaw automatically detects a running lemonade-server
+  (http://127.0.0.1:13305) and pre-configures itself to use it via the
+  lemonade openclaw recipe. No manual setup needed when lemonade-server is
+  installed — just start using OpenClaw.
+
+  SETUP
+
+  Requires a valid API key for your chosen LLM provider, OR lemonade-server
+  running locally for fully offline inference. Run the onboarding wizard on
+  first launch:
+
+    openclaw onboard
+
+  The background gateway service starts automatically the first time you run
+  any openclaw command and is managed as a standard systemd user unit:
+
+    systemctl --user status openclaw
+    systemctl --user stop openclaw
+
+title: OpenClaw
+source-code: https://github.com/kenvandine/openclaw-snap
+issues: https://github.com/kenvandine/openclaw-snap/issues
+contact: https://github.com/kenvandine/openclaw-snap/issues
+
+grade: stable
+confinement: classic
+
+apps:
+  # Interactive CLI — onboarding wizard, config editing, status checks, etc.
+  # Run as: openclaw <command>
+  openclaw:
+    command: bin/openclaw-launch
+    completer: share/completions/openclaw.bash
+    environment:
+      PLAYWRIGHT_BROWSERS_PATH: $SNAP/usr/share/ms-playwright
+      OPENCLAW_CLI_NAME: openclaw
+      OPENCLAW_LOG_LEVEL: error
+
+  # Gateway daemon — registered as /snap/bin/openclaw.daemon so the snap
+  # wrapper sets up $SNAP and friends before exec-ing the launch script.
+  # Managed by the systemd user unit installed on first run of 'openclaw'.
+  daemon:
+    command: bin/openclaw-daemon-launch
+    environment:
+      PLAYWRIGHT_BROWSERS_PATH: $SNAP/usr/share/ms-playwright
+      OPENCLAW_CLI_NAME: openclaw
+      OPENCLAW_LOG_LEVEL: error
+
+
+parts:
+  launcher:
+    plugin: dump
+    source: snap/local
+    organize:
+      bin/openclaw-launch: bin/openclaw-launch
+      bin/openclaw-daemon-launch: bin/openclaw-daemon-launch
+      bin/setup-providers.js: bin/setup-providers.js
+      share/completions/openclaw.bash: share/completions/openclaw.bash
+      share/systemd/user/openclaw.service: share/systemd/user/openclaw.service
+
+  openclaw:
+    plugin: npm
+    source: .
+    npm-include-node: true
+    npm-node-version: '22.16.0'
+    override-build: |
+      # craftctl default stages Node.js and runs npm install on the repo-root
+      # placeholder package.json (no deps — instant).  We only need it so that
+      # node/npm land in $CRAFT_PART_INSTALL/bin before we call them below.
+      craftctl default
+      export PATH="$CRAFT_PART_INSTALL/bin:$PATH"
+      # Patch the staged node binary so the classic linter sees the correct
+      # snap interpreter and rpath instead of the host system defaults.
+      patchelf \
+        --set-interpreter /snap/core24/current/lib64/ld-linux-x86-64.so.2 \
+        --set-rpath /snap/core24/current/lib/x86_64-linux-gnu \
+        "$CRAFT_PART_INSTALL/bin/node"
+      # Install the latest published openclaw release from the npm registry.
+      npm install -g --prefix "$CRAFT_PART_INSTALL" openclaw
+      # Derive snap version from the installed package.
+      craftctl set version="$("$CRAFT_PART_INSTALL/bin/node" -e \
+        "console.log(require('$CRAFT_PART_INSTALL/lib/node_modules/openclaw/package.json').version)")"
+      # openclaw depends on playwright-core (no CLI).  Install the matching
+      # full playwright package so we get the browser-installer CLI, then use
+      # it to bake the pinned Chromium revision into the snap at build time.
+      export PLAYWRIGHT_BROWSERS_PATH="$CRAFT_PART_INSTALL/usr/share/ms-playwright"
+      mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
+      PLAYWRIGHT_CORE_PKG=$(find "$CRAFT_PART_INSTALL/lib/node_modules" \
+        -name "package.json" -path "*/playwright-core/package.json" | head -1)
+      PLAYWRIGHT_VERSION=$("$CRAFT_PART_INSTALL/bin/node" -e \
+        "console.log(require('${PLAYWRIGHT_CORE_PKG}').version)")
+      "$CRAFT_PART_INSTALL/bin/npm" install -g \
+        --prefix "$CRAFT_PART_BUILD/playwright-cli" \
+        "playwright@${PLAYWRIGHT_VERSION}"
+      "$CRAFT_PART_BUILD/playwright-cli/bin/playwright" install chromium
+      # Wrap the Chromium binary so it always runs with --no-sandbox.
+      # Classic confinement provides no AppArmor policy, so we rely on the
+      # OS user account for isolation rather than kernel user namespaces.
+      CHROME_BIN=$(find "$PLAYWRIGHT_BROWSERS_PATH" -name "chrome" -type f | head -1)
+      mv "$CHROME_BIN" "${CHROME_BIN}-real"
+      printf '#!/bin/sh\nexec "$(dirname "$0")/chrome-real" --no-sandbox --disable-setuid-sandbox "$@"\n' > "$CHROME_BIN"
+      chmod +x "$CHROME_BIN"
+    build-packages:
+      - python3
+      - patchelf
+    stage-packages:
+      # Runtime libraries required by Playwright's bundled Chromium on Noble.
+      - libnss3
+      - libnspr4
+      - libatk1.0-0t64
+      - libatk-bridge2.0-0t64
+      - libcups2t64
+      - libdrm2
+      - libdbus-1-3
+      - libxkbcommon0
+      - libatspi2.0-0t64
+      - libx11-6
+      - libxcomposite1
+      - libxdamage1
+      - libxext6
+      - libxfixes3
+      - libxrandr2
+      - libgbm1
+      - libpango-1.0-0
+      - libcairo2
+      - libasound2t64
+      - curl
+      - git
+      - golang-go
+      - python3
+      - python3-full
+      - python3-pip
+      - python3.12-venv
+      - ffmpeg
+      - gh
+      - jq
+    prime:
+      # Koffi ships prebuilts for every platform; exclude everything except the
+      # one we actually run (linux_x64).
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/freebsd_arm64
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/freebsd_ia32
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/freebsd_x64
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/linux_arm64
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/linux_armhf
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/linux_ia32
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/linux_loong64
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/linux_riscv64d
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/musl_arm64
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/musl_x64
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/openbsd_ia32
+      - -lib/node_modules/openclaw/node_modules/koffi/build/koffi/openbsd_x64
+      # tree-sitter-bash ships non-x64 Linux prebuilds we don't need.
+      - -lib/node_modules/openclaw/node_modules/tree-sitter-bash/prebuilds/linux-arm64
+      # The golang-go stage-package includes the full Go standard library source
+      # tree; the testdata subdirectories contain foreign-arch ELF fixtures that
+      # generate spurious linter warnings and bloat the snap for no runtime value.
+      - -usr/share/go-1.22/src/debug/dwarf/testdata
+      - -usr/share/go-1.22/src/debug/elf/testdata
+      # libcaca's GL plugin has unresolvable dependencies (libGLU, libglut) and
+      # no openclaw feature requires it.
+      - -usr/lib/x86_64-linux-gnu/caca
