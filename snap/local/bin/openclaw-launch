@@ -7,6 +7,12 @@ export PLAYWRIGHT_BROWSERS_PATH="$SNAP/usr/share/ms-playwright"
 # Make sure the workspace directory exists on first run.
 mkdir -p "$HOME/workspace"
 
+CONFIG_FILE="$HOME/.openclaw/openclaw.json"
+
+if [ ! -f "$CONFIG_FILE" ] && [ -t 0 ] && [ -t 1 ]; then
+  "$SNAP/bin/node" "$SNAP/bin/setup-providers.js" onboard --first-run || true
+fi
+
 # Install and enable the gateway service on first run.  Uses /snap/openclaw/current
 # (always the active revision) so the unit file stays valid across snap updates.
 if ! systemctl --user is-enabled openclaw >/dev/null 2>&1; then
@@ -25,10 +31,9 @@ if [ -z "$OPENCLAW_MJS" ]; then
   exit 1
 fi
 
-# When the user runs 'openclaw onboard' and a config already exists (e.g. set
-# up automatically by the service on first start), pass --auth-choice skip so
-# the wizard doesn't prompt for a provider or model — both are already set.
-CONFIG_FILE="$HOME/.openclaw/openclaw.json"
+# When the user runs 'openclaw onboard' and a config already exists (for example
+# after Lemonade setup), pass --auth-choice skip so the wizard keeps the chosen
+# provider and only collects any remaining OpenClaw settings.
 if [ "$1" = "onboard" ] && [ -f "$CONFIG_FILE" ]; then
   shift
   exec "$SNAP/bin/node" "$OPENCLAW_MJS" onboard --auth-choice skip "$@"

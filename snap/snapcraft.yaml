@@ -16,10 +16,10 @@ description: |
 
   LOCAL AI
 
-  On first start OpenClaw automatically detects a running lemonade-server
-  (http://127.0.0.1:13305) and pre-configures itself to use it via the
-  lemonade openclaw recipe. No manual setup needed when lemonade-server is
-  installed — just start using OpenClaw.
+  On first interactive start OpenClaw detects a running lemonade-server
+  (http://127.0.0.1:13305), offers to configure it as the model provider,
+  and lets you choose an OpenClaw recipe from the Lemonade recipe catalog.
+  You can rerun that setup any time with 'openclaw.lemonade'.
 
   SETUP
 
@@ -54,6 +54,13 @@ apps:
       OPENCLAW_CLI_NAME: openclaw
       OPENCLAW_LOG_LEVEL: error
 
+  lemonade:
+    command: bin/openclaw-lemonade-launch
+    environment:
+      PLAYWRIGHT_BROWSERS_PATH: $SNAP/usr/share/ms-playwright
+      OPENCLAW_CLI_NAME: openclaw
+      OPENCLAW_LOG_LEVEL: error
+
   # Gateway daemon — registered as /snap/bin/openclaw.daemon so the snap
   # wrapper sets up $SNAP and friends before exec-ing the launch script.
   # Managed by the systemd user unit installed on first run of 'openclaw'.
@@ -72,6 +79,7 @@ parts:
     organize:
       bin/openclaw-launch: bin/openclaw-launch
       bin/openclaw-daemon-launch: bin/openclaw-daemon-launch
+      bin/openclaw-lemonade-launch: bin/openclaw-lemonade-launch
       bin/setup-providers.js: bin/setup-providers.js
       share/completions/openclaw.bash: share/completions/openclaw.bash
       share/systemd/user/openclaw.service: share/systemd/user/openclaw.service
@@ -87,12 +95,6 @@ parts:
       # node/npm land in $CRAFT_PART_INSTALL/bin before we call them below.
       craftctl default
       export PATH="$CRAFT_PART_INSTALL/bin:$PATH"
-      # Patch the staged node binary so the classic linter sees the correct
-      # snap interpreter and rpath instead of the host system defaults.
-      patchelf \
-        --set-interpreter /snap/core24/current/lib64/ld-linux-x86-64.so.2 \
-        --set-rpath /snap/core24/current/lib/x86_64-linux-gnu \
-        "$CRAFT_PART_INSTALL/bin/node"
       # Install the latest published openclaw release from the npm registry.
       npm install -g --prefix "$CRAFT_PART_INSTALL" openclaw
       # Derive snap version from the installed package.
@@ -118,6 +120,12 @@ parts:
       mv "$CHROME_BIN" "${CHROME_BIN}-real"
       printf '#!/bin/sh\nexec "$(dirname "$0")/chrome-real" --no-sandbox --disable-setuid-sandbox "$@"\n' > "$CHROME_BIN"
       chmod +x "$CHROME_BIN"
+      # Patch the staged node binary only after all build-time node/npm usage is
+      # complete so it remains executable inside the build environment.
+      patchelf \
+        --set-interpreter /snap/core24/current/lib64/ld-linux-x86-64.so.2 \
+        --set-rpath /snap/core24/current/lib/x86_64-linux-gnu \
+        "$CRAFT_PART_INSTALL/bin/node"
     build-packages:
       - python3
       - patchelf

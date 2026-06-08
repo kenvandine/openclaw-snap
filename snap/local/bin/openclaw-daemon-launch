@@ -1,13 +1,6 @@
 #!/bin/sh
 # openclaw-daemon-launch — persistent gateway service.
 #
-# On first start (no config file present) it probes for a local lemonade-server
-# instance at http://127.0.0.1:13305 and, if found, activates the openclaw
-# recipe and writes a minimal openclaw.json so the gateway has a working LLM
-# provider without any manual configuration.  If lemonade is absent the gateway
-# starts cleanly with OpenClaw's safe defaults; run 'openclaw onboard' at any
-# time to complete setup.
-
 export PLAYWRIGHT_BROWSERS_PATH="$SNAP/usr/share/ms-playwright"
 
 mkdir -p "$HOME/workspace"
@@ -23,17 +16,11 @@ fi
 CONFIG_FILE="$HOME/.openclaw/openclaw.json"
 
 if [ ! -f "$CONFIG_FILE" ]; then
-  if "$SNAP/bin/node" "$SNAP/bin/setup-providers.js"; then
-    echo "openclaw: provider config written to $CONFIG_FILE"
-  else
-    echo "openclaw: lemonade not detected; starting with safe defaults"
-    echo "openclaw: run 'openclaw onboard' to configure an LLM provider"
-  fi
   # Bootstrap device identity, credential store, and gateway token so the
   # CLI can connect immediately without a separate 'openclaw setup' step.
   "$SNAP/bin/node" "$OPENCLAW_MJS" setup --non-interactive --accept-risk --mode local 2>&1 || true
 fi
 
-# --allow-unconfigured lets the gateway start on first boot before the
-# auto-config script has had a chance to write gateway.mode=local.
+# --allow-unconfigured lets the gateway start before the user has completed
+# first-run onboarding or selected an LLM provider.
 exec "$SNAP/bin/node" "$OPENCLAW_MJS" gateway --allow-unconfigured

@@ -19,8 +19,9 @@ sudo snap install --classic openclaw_<version>_amd64.snap --dangerous
 ## Usage
 
 ```
-openclaw onboard        # first-run setup wizard
-openclaw               # interactive CLI
+openclaw               # interactive CLI; prompts for Lemonade on first run
+openclaw onboard       # OpenClaw's built-in onboarding wizard
+openclaw.lemonade      # Lemonade-specific provider setup
 ```
 
 The background gateway service is installed and enabled as a systemd user unit the first time any `openclaw` command is run:
@@ -29,6 +30,12 @@ The background gateway service is installed and enabled as a systemd user unit t
 systemctl --user status openclaw
 systemctl --user stop openclaw
 systemctl --user start openclaw
+```
+
+If Lemonade Server is already running on the host at `http://127.0.0.1:13305`, the first interactive `openclaw` launch offers to configure it as the model provider and fetches the OpenClaw Lemonade recipe catalog from `kenvandine/recipes`' `openclaw_recipes` branch at runtime. You can rerun that flow at any time with:
+
+```
+openclaw.lemonade
 ```
 
 ## Design notes

@@ -1,0 +1,14 @@
+#!/bin/sh
+
+export PLAYWRIGHT_BROWSERS_PATH="$SNAP/usr/share/ms-playwright"
+
+mkdir -p "$HOME/workspace"
+
+"$SNAP/bin/node" "$SNAP/bin/setup-providers.js" onboard --force "$@"
+status=$?
+
+if [ "$status" -eq 0 ]; then
+  systemctl --user restart openclaw >/dev/null 2>&1 || true
+fi
+
+exit "$status"
