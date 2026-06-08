@@ -53,6 +53,7 @@ apps:
       PLAYWRIGHT_BROWSERS_PATH: $SNAP/usr/share/ms-playwright
       OPENCLAW_CLI_NAME: openclaw
       OPENCLAW_LOG_LEVEL: error
+      OPENCLAW_NO_AUTO_UPDATE: '1'
 
   lemonade:
     command: bin/openclaw-lemonade-launch
@@ -60,6 +61,7 @@ apps:
       PLAYWRIGHT_BROWSERS_PATH: $SNAP/usr/share/ms-playwright
       OPENCLAW_CLI_NAME: openclaw
       OPENCLAW_LOG_LEVEL: error
+      OPENCLAW_NO_AUTO_UPDATE: '1'
 
   # Gateway daemon — registered as /snap/bin/openclaw.daemon so the snap
   # wrapper sets up $SNAP and friends before exec-ing the launch script.
@@ -70,6 +72,7 @@ apps:
       PLAYWRIGHT_BROWSERS_PATH: $SNAP/usr/share/ms-playwright
       OPENCLAW_CLI_NAME: openclaw
       OPENCLAW_LOG_LEVEL: error
+      OPENCLAW_NO_AUTO_UPDATE: '1'
 
 
 parts:

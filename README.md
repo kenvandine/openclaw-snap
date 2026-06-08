@@ -38,6 +38,8 @@ If Lemonade Server is already running on the host at `http://127.0.0.1:13305`, t
 openclaw.lemonade
 ```
 
+Because snap refreshes are managed by snapd, the snap also disables OpenClaw's startup update hints and in-app self-update path.
+
 ## Design notes
 
 **npm install instead of build from source** — `snap/snapcraft.yaml` installs the pre-built openclaw package directly from the npm registry rather than cloning and building from source with pnpm. This avoids pulling in the full build toolchain (pnpm, gcc, make) and the Tlon/Urbit extension workarounds that were required to get a clean build.

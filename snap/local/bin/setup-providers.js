@@ -348,6 +348,17 @@ function mergeGatewayConfig(existingConfig) {
   };
 }
 
+function mergeUpdateConfig(existingConfig) {
+  const existingUpdate = existingConfig.update && typeof existingConfig.update === 'object'
+    ? existingConfig.update
+    : {};
+
+  return {
+    ...existingUpdate,
+    checkOnStart: false,
+  };
+}
+
 function mergeAgentDefaults(existingConfig, primaryModel) {
   const existingAgents = existingConfig.agents && typeof existingConfig.agents === 'object'
     ? existingConfig.agents
@@ -400,6 +411,7 @@ function writeProviderConfig(selectedRecipe, recipes, runtimeModels) {
   const config = {
     ...existingConfig,
     gateway: mergeGatewayConfig(existingConfig),
+    update: mergeUpdateConfig(existingConfig),
     models: {
       ...existingModels,
       mode: existingModels.mode || 'replace',
