@@ -88,7 +88,7 @@ parts:
     plugin: npm
     source: .
     npm-include-node: true
-    npm-node-version: '22.16.0'
+    npm-node-version: '22.19.0'
     override-build: |
       # craftctl default stages Node.js and runs npm install on the repo-root
       # placeholder package.json (no deps — instant).  We only need it so that
