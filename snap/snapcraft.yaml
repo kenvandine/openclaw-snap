@@ -120,15 +120,8 @@ parts:
       mv "$CHROME_BIN" "${CHROME_BIN}-real"
       printf '#!/bin/sh\nexec "$(dirname "$0")/chrome-real" --no-sandbox --disable-setuid-sandbox "$@"\n' > "$CHROME_BIN"
       chmod +x "$CHROME_BIN"
-      # Patch the staged node binary only after all build-time node/npm usage is
-      # complete so it remains executable inside the build environment.
-      patchelf \
-        --set-interpreter /snap/core24/current/lib64/ld-linux-x86-64.so.2 \
-        --set-rpath /snap/core24/current/lib/x86_64-linux-gnu \
-        "$CRAFT_PART_INSTALL/bin/node"
     build-packages:
       - python3
-      - patchelf
     stage-packages:
       # Runtime libraries required by Playwright's bundled Chromium on Noble.
       - libnss3

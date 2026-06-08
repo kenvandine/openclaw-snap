@@ -105,6 +105,23 @@ function inputTypesFromLabels(labels) {
   return inputs;
 }
 
+function normalizeModelId(modelId) {
+  return String(modelId || '').replace(/^(user|extra|builtin)\./, '');
+}
+
+function recipeMatchesModel(recipe, model) {
+  const modelId = typeof model === 'string' ? model : model?.id;
+  if (typeof modelId !== 'string' || modelId === '') {
+    return false;
+  }
+
+  return modelId === recipe.modelName || normalizeModelId(modelId) === normalizeModelId(recipe.modelName);
+}
+
+function findRuntimeModelForRecipe(recipe, runtimeModels) {
+  return runtimeModels.find(model => recipeMatchesModel(recipe, model));
+}
+
 function httpRequest({ protocol = 'http:', method, hostname, port, path: urlPath, headers }, body) {
   const transport = protocol === 'https:' ? https : http;
 
@@ -157,6 +174,14 @@ async function httpPost(hostname, port, urlPath, data) {
   }, body);
 }
 
+function parseJsonResponse(response, context) {
+  try {
+    return response.body ? JSON.parse(response.body) : {};
+  } catch (error) {
+    throw new Error(`${context} returned invalid JSON: ${error.message}`);
+  }
+}
+
 async function httpGetUrl(urlString, headers = {}) {
   const url = new URL(urlString);
   const port = url.port === '' ? (url.protocol === 'https:' ? 443 : 80) : Number(url.port);
@@ -189,6 +214,40 @@ async function probeLemonadeModels() {
   } catch {
     return null;
   }
+}
+
+function recipeToPullPayload(recipe) {
+  const payload = {
+    model_name: recipe.modelName,
+    recipe: recipe.recipe,
+  };
+
+  if (recipe.checkpoints && typeof recipe.checkpoints === 'object' && Object.keys(recipe.checkpoints).length > 0) {
+    payload.checkpoints = recipe.checkpoints;
+  } else if (typeof recipe.checkpoint === 'string' && recipe.checkpoint !== '') {
+    payload.checkpoint = recipe.checkpoint;
+  }
+
+  if (typeof recipe.mmproj === 'string' && recipe.mmproj !== '') {
+    payload.mmproj = recipe.mmproj;
+  }
+
+  if (Array.isArray(recipe.labels)) {
+    if (recipe.labels.includes('vision')) {
+      payload.vision = true;
+    }
+    if (recipe.labels.includes('reasoning')) {
+      payload.reasoning = true;
+    }
+    if (recipe.labels.includes('embeddings')) {
+      payload.embedding = true;
+    }
+    if (recipe.labels.includes('reranking')) {
+      payload.reranking = true;
+    }
+  }
+
+  return payload;
 }
 
 function recipesFromRuntimeModels(runtimeModels) {
@@ -244,6 +303,11 @@ async function fetchRecipeCatalogFromGitHub() {
       size: typeof recipe.size === 'number' ? recipe.size : null,
       labels: Array.isArray(recipe.labels) ? recipe.labels : [],
       contextWindow: recipe.recipe_options?.ctx_size || 32768,
+      checkpoint: typeof recipe.checkpoint === 'string' ? recipe.checkpoint : null,
+      checkpoints: recipe.checkpoints && typeof recipe.checkpoints === 'object' ? recipe.checkpoints : null,
+      mmproj: typeof recipe.mmproj === 'string' ? recipe.mmproj : null,
+      recipe: typeof recipe.recipe === 'string' ? recipe.recipe : 'llamacpp',
+      recipeOptions: recipe.recipe_options && typeof recipe.recipe_options === 'object' ? recipe.recipe_options : {},
     };
   }));
 }
@@ -311,7 +375,7 @@ function mergeAgentDefaults(existingConfig, primaryModel) {
 
 function buildProviderModel(recipe, runtimeModel) {
   return {
-    id: recipe.modelName,
+    id: runtimeModel?.id || recipe.modelName,
     name: recipe.title,
     reasoning: false,
     input: inputTypesFromLabels(recipe.labels),
@@ -322,9 +386,10 @@ function buildProviderModel(recipe, runtimeModel) {
 }
 
 function writeProviderConfig(selectedRecipe, recipes, runtimeModels) {
-  const runtimeById = new Map(runtimeModels.map(model => [model.id, model]));
   const existingConfig = readJson(configFile) || {};
-  const providerModels = recipes.map(recipe => buildProviderModel(recipe, runtimeById.get(recipe.modelName)));
+  const selectedRuntimeModel = findRuntimeModelForRecipe(selectedRecipe, runtimeModels);
+  const selectedProviderModelId = selectedRuntimeModel?.id || selectedRecipe.modelName;
+  const providerModels = recipes.map(recipe => buildProviderModel(recipe, findRuntimeModelForRecipe(recipe, runtimeModels)));
   const existingModels = existingConfig.models && typeof existingConfig.models === 'object'
     ? existingConfig.models
     : {};
@@ -348,33 +413,45 @@ function writeProviderConfig(selectedRecipe, recipes, runtimeModels) {
         },
       },
     },
-    agents: mergeAgentDefaults(existingConfig, `lemonade/${selectedRecipe.modelName}`),
+    agents: mergeAgentDefaults(existingConfig, `lemonade/${selectedProviderModelId}`),
   };
 
   writeJson(configFile, config);
 }
 
 async function tryLoadRecipe(recipe) {
-  const names = [
-    recipe.title,
-    recipe.file,
-    recipe.file.replace(/\.json$/, ''),
-    recipe.modelName,
-    `openclaw/${recipe.file}`,
-  ];
+  const pullResponse = await httpPost(
+    LEMONADE_HOST,
+    LEMONADE_PORT,
+    `${LEMONADE_API}/pull`,
+    recipeToPullPayload(recipe)
+  );
 
-  for (const name of names) {
-    try {
-      const response = await httpPost(LEMONADE_HOST, LEMONADE_PORT, `${LEMONADE_API}/recipe/load`, { name });
-      if (response.status >= 200 && response.status < 300) {
-        return true;
-      }
-    } catch {
-      // best-effort only
-    }
+  const pullPayload = parseJsonResponse(pullResponse, '/api/v1/pull');
+  if (pullResponse.status < 200 || pullResponse.status >= 300 || pullPayload.status === 'error') {
+    throw new Error(pullPayload.message || `Lemonade pull failed with status ${pullResponse.status}`);
   }
 
-  return false;
+  const loadPayload = {
+    model_name: recipe.modelName,
+    save_options: true,
+    ...recipe.recipeOptions,
+  };
+  const loadResponse = await httpPost(
+    LEMONADE_HOST,
+    LEMONADE_PORT,
+    `${LEMONADE_API}/load`,
+    loadPayload
+  );
+  const loadResponsePayload = parseJsonResponse(loadResponse, '/api/v1/load');
+  if (loadResponse.status < 200 || loadResponse.status >= 300 || loadResponsePayload.status === 'error') {
+    throw new Error(loadResponsePayload.message || `Lemonade load failed with status ${loadResponse.status}`);
+  }
+
+  return {
+    pullMessage: pullPayload.message || '',
+    loadMessage: loadResponsePayload.message || '',
+  };
 }
 
 function preferredRecipe(recipes, runtimeModels, requestedRecipe) {
@@ -392,7 +469,7 @@ function preferredRecipe(recipes, runtimeModels, requestedRecipe) {
     return exactMatch;
   }
 
-  const loadedRecipe = recipes.find(recipe => runtimeModels.some(model => model.id === recipe.modelName));
+  const loadedRecipe = recipes.find(recipe => runtimeModels.some(model => recipeMatchesModel(recipe, model)));
   return loadedRecipe || recipes[0];
 }
 
@@ -420,13 +497,12 @@ async function promptYesNo(rl, prompt, defaultValue = true) {
 }
 
 async function promptForRecipe(rl, recipes, runtimeModels) {
-  const loadedIds = new Set(runtimeModels.map(model => model.id));
   const defaultRecipe = preferredRecipe(recipes, runtimeModels);
   const defaultIndex = recipes.findIndex(recipe => recipe.modelName === defaultRecipe.modelName);
 
   process.stdout.write('\nAvailable Lemonade recipes for OpenClaw:\n');
   recipes.forEach((recipe, index) => {
-    process.stdout.write(`  ${index + 1}. ${renderRecipeLine(recipe, loadedIds.has(recipe.modelName))}\n`);
+    process.stdout.write(`  ${index + 1}. ${renderRecipeLine(recipe, runtimeModels.some(model => recipeMatchesModel(recipe, model)))}\n`);
   });
   process.stdout.write('\n');
 
@@ -451,16 +527,17 @@ function saveOnboardingState(data) {
 }
 
 async function configureFromRecipe(recipe, recipes, runtimeModels) {
-  const loadAttempted = runtimeModels.some(model => model.id === recipe.modelName)
-    ? false
-    : await tryLoadRecipe(recipe);
+  let activationResult = null;
+  if (!runtimeModels.some(model => recipeMatchesModel(recipe, model))) {
+    activationResult = await tryLoadRecipe(recipe);
+  }
   const updatedRuntimeModels = await probeLemonadeModels();
   const finalRuntimeModels = Array.isArray(updatedRuntimeModels) ? updatedRuntimeModels : runtimeModels;
 
   writeProviderConfig(recipe, recipes, finalRuntimeModels);
 
-  const recipeIsLoaded = finalRuntimeModels.some(model => model.id === recipe.modelName);
-  return { loadAttempted, recipeIsLoaded, runtimeModels: finalRuntimeModels };
+  const recipeIsLoaded = finalRuntimeModels.some(model => recipeMatchesModel(recipe, model));
+  return { activationResult, recipeIsLoaded, runtimeModels: finalRuntimeModels };
 }
 
 async function runDetect() {
@@ -497,8 +574,14 @@ async function runConfigure(options) {
   if (source !== 'github') {
     process.stdout.write('openclaw: GitHub recipe catalog was unavailable; using the currently loaded Lemonade models instead\n');
   }
+  if (result.activationResult?.pullMessage) {
+    process.stdout.write(`openclaw: ${result.activationResult.pullMessage}\n`);
+  }
+  if (result.activationResult?.loadMessage) {
+    process.stdout.write(`openclaw: ${result.activationResult.loadMessage}\n`);
+  }
   if (!result.recipeIsLoaded) {
-    process.stdout.write(`openclaw: Lemonade may still need to activate ${recipe.title} before the model can answer requests\n`);
+    process.stdout.write(`openclaw: Lemonade did not report ${recipe.title} as loaded yet; check Lemonade for download or backend errors\n`);
   }
 }
 
@@ -573,10 +656,16 @@ async function runOnboard(options) {
 
     process.stdout.write(`\nopenclaw: configured Lemonade provider with ${selectedRecipe.title}\n`);
     process.stdout.write(`openclaw: primary model → lemonade/${selectedRecipe.modelName}\n`);
+    if (result.activationResult?.pullMessage) {
+      process.stdout.write(`openclaw: ${result.activationResult.pullMessage}\n`);
+    }
+    if (result.activationResult?.loadMessage) {
+      process.stdout.write(`openclaw: ${result.activationResult.loadMessage}\n`);
+    }
 
     if (!result.recipeIsLoaded) {
       process.stdout.write(
-        `openclaw: Lemonade did not report ${selectedRecipe.title} as loaded yet; activate or download it in Lemonade if needed\n`
+        `openclaw: Lemonade did not report ${selectedRecipe.title} as loaded yet; check Lemonade for download or backend errors\n`
       );
     }
   } finally {
