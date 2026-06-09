@@ -1,0 +1,75 @@
+name: PR smoke test
+
+on:
+  pull_request:
+    paths:
+      - 'snap/**'
+      - 'package.json'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install snapd and squashfs-tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools snapd
+          sudo ln -sf /var/lib/snapd/snap /snap
+
+      - name: Start snapd
+        run: |
+          sudo systemctl start snapd
+          sudo systemctl start snapd.socket
+          sleep 5
+
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --channel=8.x/stable --classic
+
+      - name: Build snap
+        run: snapcraft pack
+
+      - name: Extract snap
+        id: extract
+        run: |
+          SNAP_FILE=$(ls -t openclaw_*.snap 2>/dev/null | head -1)
+          if [ -z "$SNAP_FILE" ]; then
+            echo "No snap file found"
+            exit 1
+          fi
+          mkdir -p /tmp/snap-root
+          unsquashfs -d /tmp/snap-root "$SNAP_FILE"
+          echo "snap=$SNAP_FILE" >> $GITHUB_OUTPUT
+
+      - name: Verify binary exists
+        run: |
+          ls -la /tmp/snap-root/bin/openclaw-launch
+          test -x /tmp/snap-root/bin/openclaw-launch
+
+      - name: Verify openclaw.mjs is bundled
+        run: |
+          FOUND=$(find /tmp/snap-root -name "openclaw.mjs" 2>/dev/null | head -1)
+          test -n "$FOUND"
+          echo "Found openclaw.mjs at: $FOUND"
+
+      - name: Verify Node.js is bundled
+        run: |
+          test -x /tmp/snap-root/bin/node
+          /tmp/snap-root/bin/node --version
+
+      - name: Verify Node can load openclaw
+        run: |
+          NODE="/tmp/snap-root/bin/node"
+          OPENCLAW_MJS=$($NODE -e "
+            const fs = require('fs');
+            const path = require('path');
+            const base = '/tmp/snap-root';
+            const found = fs.readdirSync(path.join(base, 'lib/node_modules')).find(d => d.startsWith('openclaw'));
+            console.log(path.join(base, 'lib/node_modules', found || '', 'openclaw.mjs'));
+          ")
+          $NODE "$OPENCLAW_MJS" --help 2>&1 | head -20
