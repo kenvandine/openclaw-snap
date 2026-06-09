@@ -3,6 +3,9 @@
 #
 export PLAYWRIGHT_BROWSERS_PATH="$SNAP/usr/share/ms-playwright"
 
+. "$SNAP/bin/openclaw-sanitize-env"
+sanitize_openclaw_snap_env
+
 mkdir -p "$HOME/workspace"
 
 OPENCLAW_MJS=$(find "$SNAP/lib/node_modules" \
@@ -23,4 +26,8 @@ fi
 
 # --allow-unconfigured lets the gateway start before the user has completed
 # first-run onboarding or selected an LLM provider.
-exec "$SNAP/bin/node" "$OPENCLAW_MJS" gateway --allow-unconfigured
+if [ "$1" = "gateway" ]; then
+  shift
+fi
+
+exec "$SNAP/bin/node" "$OPENCLAW_MJS" gateway --allow-unconfigured "$@"

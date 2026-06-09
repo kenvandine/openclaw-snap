@@ -1,0 +1,22 @@
+[Unit]
+Description=OpenClaw gateway service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/snap/bin/openclaw.daemon gateway --allow-unconfigured
+Restart=always
+RestartSec=5s
+Environment=HOME=%h
+Environment=PATH=/snap/openclaw/current/usr/bin:/snap/openclaw/current/bin:/usr/local/bin:/usr/bin:/bin
+Environment=OPENCLAW_CONFIG_PATH=%h/.openclaw/openclaw.json
+Environment=OPENCLAW_STATE_DIR=%h/.openclaw/state
+Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-gateway.service
+Environment=OPENCLAW_SERVICE_MARKER=openclaw
+Environment=OPENCLAW_SERVICE_KIND=gateway
+UnsetEnvironment=OPENCLAW_GATEWAY_TOKEN
+SuccessExitStatus=78
+RestartPreventExitStatus=78
+
+[Install]
+WantedBy=default.target

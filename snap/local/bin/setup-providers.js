@@ -369,6 +369,9 @@ function mergeAgentDefaults(existingConfig, primaryModel) {
   const existingModel = existingDefaults.model && typeof existingDefaults.model === 'object'
     ? existingDefaults.model
     : {};
+  const existingMemorySearch = existingDefaults.memorySearch && typeof existingDefaults.memorySearch === 'object'
+    ? existingDefaults.memorySearch
+    : {};
 
   return {
     ...existingAgents,
@@ -376,6 +379,10 @@ function mergeAgentDefaults(existingConfig, primaryModel) {
       ...existingDefaults,
       workspace: existingDefaults.workspace || path.join(homeDir, 'workspace'),
       sandbox: existingDefaults.sandbox || { mode: 'off' },
+      memorySearch: {
+        ...existingMemorySearch,
+        enabled: existingMemorySearch.enabled ?? false,
+      },
       model: {
         ...existingModel,
         primary: primaryModel,

@@ -2,13 +2,16 @@
 
 export PLAYWRIGHT_BROWSERS_PATH="$SNAP/usr/share/ms-playwright"
 
+. "$SNAP/bin/openclaw-sanitize-env"
+sanitize_openclaw_snap_env
+
 mkdir -p "$HOME/workspace"
 
 "$SNAP/bin/node" "$SNAP/bin/setup-providers.js" onboard --force "$@"
 status=$?
 
 if [ "$status" -eq 0 ]; then
-  systemctl --user restart openclaw >/dev/null 2>&1 || true
+  systemctl --user restart openclaw-gateway >/dev/null 2>&1 || true
 fi
 
 exit "$status"

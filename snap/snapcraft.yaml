@@ -32,8 +32,8 @@ description: |
   The background gateway service starts automatically the first time you run
   any openclaw command and is managed as a standard systemd user unit:
 
-    systemctl --user status openclaw
-    systemctl --user stop openclaw
+    systemctl --user status openclaw-gateway
+    systemctl --user stop openclaw-gateway
 
 title: OpenClaw
 source-code: https://github.com/kenvandine/openclaw-snap
@@ -83,9 +83,10 @@ parts:
       bin/openclaw-launch: bin/openclaw-launch
       bin/openclaw-daemon-launch: bin/openclaw-daemon-launch
       bin/openclaw-lemonade-launch: bin/openclaw-lemonade-launch
+      bin/openclaw-sanitize-env: bin/openclaw-sanitize-env
       bin/setup-providers.js: bin/setup-providers.js
       share/completions/openclaw.bash: share/completions/openclaw.bash
-      share/systemd/user/openclaw.service: share/systemd/user/openclaw.service
+      share/systemd/user/openclaw-gateway.service: share/systemd/user/openclaw-gateway.service
 
   openclaw:
     plugin: npm
@@ -156,6 +157,9 @@ parts:
       - ffmpeg
       - gh
       - jq
+      - lsof
+      - ripgrep
+      - tmux
     prime:
       # Koffi ships prebuilts for every platform; exclude everything except the
       # one we actually run (linux_x64).

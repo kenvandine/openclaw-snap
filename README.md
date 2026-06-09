@@ -27,9 +27,9 @@ openclaw.lemonade      # Lemonade-specific provider setup
 The background gateway service is installed and enabled as a systemd user unit the first time any `openclaw` command is run:
 
 ```
-systemctl --user status openclaw
-systemctl --user stop openclaw
-systemctl --user start openclaw
+systemctl --user status openclaw-gateway
+systemctl --user stop openclaw-gateway
+systemctl --user start openclaw-gateway
 ```
 
 If Lemonade Server is already running on the host at `http://127.0.0.1:13305`, the first interactive `openclaw` launch offers to configure it as the model provider and fetches the OpenClaw Lemonade recipe catalog from `kenvandine/recipes`' `openclaw_recipes` branch at runtime. You can rerun that flow at any time with:
@@ -39,6 +39,8 @@ openclaw.lemonade
 ```
 
 Because snap refreshes are managed by snapd, the snap also disables OpenClaw's startup update hints and in-app self-update path.
+
+The launchers also ignore legacy `/var/snap/ailab/...` OpenClaw environment overrides so old AILab container settings do not break the snap's config, state, or gateway token paths.
 
 ## Design notes
 

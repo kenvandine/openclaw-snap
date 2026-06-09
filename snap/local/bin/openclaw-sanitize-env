@@ -1,0 +1,23 @@
+#!/bin/sh
+
+sanitize_openclaw_snap_env() {
+  legacy_openclaw_env=0
+
+  case "${OPENCLAW_STATE_DIR-}" in
+    /var/snap/ailab/*)
+      unset OPENCLAW_STATE_DIR
+      legacy_openclaw_env=1
+      ;;
+  esac
+
+  case "${OPENCLAW_CONFIG_PATH-}" in
+    /var/snap/ailab/*)
+      unset OPENCLAW_CONFIG_PATH
+      legacy_openclaw_env=1
+      ;;
+  esac
+
+  if [ "$legacy_openclaw_env" -eq 1 ]; then
+    unset OPENCLAW_GATEWAY_TOKEN
+  fi
+}

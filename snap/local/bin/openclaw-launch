@@ -4,10 +4,17 @@
 # Tell Playwright where the pre-installed Chromium lives.
 export PLAYWRIGHT_BROWSERS_PATH="$SNAP/usr/share/ms-playwright"
 
+. "$SNAP/bin/openclaw-sanitize-env"
+sanitize_openclaw_snap_env
+
 # Make sure the workspace directory exists on first run.
 mkdir -p "$HOME/workspace"
 
 CONFIG_FILE="$HOME/.openclaw/openclaw.json"
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+SERVICE_NAME="openclaw-gateway"
+UNIT_PATH="$SYSTEMD_USER_DIR/${SERVICE_NAME}.service"
+LEGACY_UNIT_PATH="$SYSTEMD_USER_DIR/openclaw.service"
 
 if [ ! -f "$CONFIG_FILE" ] && [ -t 0 ] && [ -t 1 ]; then
   "$SNAP/bin/node" "$SNAP/bin/setup-providers.js" onboard --first-run || true
@@ -15,11 +22,20 @@ fi
 
 # Install and enable the gateway service on first run.  Uses /snap/openclaw/current
 # (always the active revision) so the unit file stays valid across snap updates.
-if ! systemctl --user is-enabled openclaw >/dev/null 2>&1; then
-  mkdir -p "$HOME/.config/systemd/user"
-  cp "$SNAP/share/systemd/user/openclaw.service" "$HOME/.config/systemd/user/openclaw.service"
-  systemctl --user daemon-reload 2>/dev/null || true
-  systemctl --user enable --now openclaw 2>/dev/null || true
+mkdir -p "$SYSTEMD_USER_DIR"
+if [ ! -f "$UNIT_PATH" ] || ! cmp -s "$SNAP/share/systemd/user/${SERVICE_NAME}.service" "$UNIT_PATH"; then
+  cp "$SNAP/share/systemd/user/${SERVICE_NAME}.service" "$UNIT_PATH"
+fi
+
+if [ -f "$LEGACY_UNIT_PATH" ] && grep -q '/snap/bin/openclaw.daemon' "$LEGACY_UNIT_PATH"; then
+  systemctl --user disable --now openclaw >/dev/null 2>&1 || true
+  rm -f "$LEGACY_UNIT_PATH"
+fi
+
+systemctl --user daemon-reload 2>/dev/null || true
+
+if ! systemctl --user is-enabled "$SERVICE_NAME" >/dev/null 2>&1; then
+  systemctl --user enable --now "$SERVICE_NAME" 2>/dev/null || true
 fi
 
 # Locate openclaw.mjs regardless of whether npm hoisted it or kept it nested.
