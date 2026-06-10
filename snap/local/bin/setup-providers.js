@@ -8,18 +8,34 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline/promises');
 
-const LEMONADE_HOST = '127.0.0.1';
-const LEMONADE_PORT = 13305;
+// ----------------------------------------------------------------------------
+// Per-snap parameters (env-driven, with OpenClaw defaults so this file is
+// byte-for-byte reusable across every Node-based "claw" snap).  Set these in
+// the snap's snapcraft.yaml under the lemonade app's 'environment:' block:
+//   CLAW_CLI_NAME        snap/app name + log prefix      (default: openclaw)
+//   CLAW_TITLE           human-facing product name       (default: OpenClaw)
+//   CLAW_CONFIG_FILE     absolute path to the CLI config (default: ~/.<cli>/<cli>.json)
+//   CLAW_RECIPE_CATEGORY recipes/ subdir in the catalog  (default: openclaw)
+//   CLAW_RECIPE_REF      git ref of the recipe catalog   (default: openclaw_recipes)
+//   CLAW_LEMONADE_PORT   lemonade-server port            (default: 13305)
+// ----------------------------------------------------------------------------
+const CLI = process.env.CLAW_CLI_NAME || 'openclaw';
+const TITLE = process.env.CLAW_TITLE || 'OpenClaw';
+
+const LEMONADE_HOST = process.env.CLAW_LEMONADE_HOST || '127.0.0.1';
+const LEMONADE_PORT = Number(process.env.CLAW_LEMONADE_PORT || 13305);
 const LEMONADE_API = '/api/v1';
 const LEMONADE_BASE_URL = `http://${LEMONADE_HOST}:${LEMONADE_PORT}${LEMONADE_API}`;
 
 const homeDir = process.env.HOME || os.homedir();
-const configDir = path.join(homeDir, '.openclaw');
-const configFile = path.join(configDir, 'openclaw.json');
+const configDir = path.join(homeDir, `.${CLI}`);
+const configFile = process.env.CLAW_CONFIG_FILE || path.join(configDir, `${CLI}.json`);
 const stateFile = path.join(configDir, 'lemonade-onboarding.json');
 const GITHUB_API_HOST = 'api.github.com';
-const GITHUB_RECIPES_PATH = '/repos/kenvandine/recipes/contents/openclaw?ref=openclaw_recipes';
-const GITHUB_USER_AGENT = 'openclaw-snap';
+const RECIPE_CATEGORY = process.env.CLAW_RECIPE_CATEGORY || 'openclaw';
+const RECIPE_REF = process.env.CLAW_RECIPE_REF || 'openclaw_recipes';
+const GITHUB_RECIPES_PATH = `/repos/kenvandine/recipes/contents/${RECIPE_CATEGORY}?ref=${RECIPE_REF}`;
+const GITHUB_USER_AGENT = `${CLI}-snap`;
 
 function usage(exitCode = 0) {
   const stream = exitCode === 0 ? process.stdout : process.stderr;
@@ -28,7 +44,7 @@ function usage(exitCode = 0) {
     '\n' +
     'commands:\n' +
     '  detect                     exit 0 if lemonade is reachable\n' +
-    '  configure [--recipe NAME]  write openclaw config non-interactively\n' +
+    '  configure [--recipe NAME]  write the CLI config non-interactively\n' +
     '  onboard [--first-run]      run the interactive lemonade onboarding TUI\n'
   );
   process.exit(exitCode);
@@ -326,7 +342,7 @@ async function loadRecipeCatalog(runtimeModels) {
       };
     }
 
-    throw new Error(`failed to fetch OpenClaw Lemonade recipes from GitHub: ${error.message}`);
+    throw new Error(`failed to fetch ${TITLE} Lemonade recipes from GitHub: ${error.message}`);
   }
 }
 
@@ -519,7 +535,7 @@ async function promptForRecipe(rl, recipes, runtimeModels) {
   const defaultRecipe = preferredRecipe(recipes, runtimeModels);
   const defaultIndex = recipes.findIndex(recipe => recipe.modelName === defaultRecipe.modelName);
 
-  process.stdout.write('\nAvailable Lemonade recipes for OpenClaw:\n');
+  process.stdout.write(`\nAvailable Lemonade recipes for ${TITLE}:\n`);
   recipes.forEach((recipe, index) => {
     process.stdout.write(`  ${index + 1}. ${renderRecipeLine(recipe, runtimeModels.some(model => recipeMatchesModel(recipe, model)))}\n`);
   });
@@ -562,20 +578,20 @@ async function configureFromRecipe(recipe, recipes, runtimeModels) {
 async function runDetect() {
   const models = await probeLemonadeModels();
   if (models === null) {
-    process.stderr.write(`openclaw: lemonade-server not detected at ${LEMONADE_HOST}:${LEMONADE_PORT}\n`);
+    process.stderr.write(`${CLI}: lemonade-server not detected at ${LEMONADE_HOST}:${LEMONADE_PORT}\n`);
     process.exit(1);
   }
 
-  process.stdout.write(`openclaw: found lemonade-server at ${LEMONADE_HOST}:${LEMONADE_PORT}\n`);
+  process.stdout.write(`${CLI}: found lemonade-server at ${LEMONADE_HOST}:${LEMONADE_PORT}\n`);
   if (models.length > 0) {
-    process.stdout.write(`openclaw: loaded models: ${models.map(model => model.id).join(', ')}\n`);
+    process.stdout.write(`${CLI}: loaded models: ${models.map(model => model.id).join(', ')}\n`);
   }
 }
 
 async function runConfigure(options) {
   const runtimeModels = await probeLemonadeModels();
   if (runtimeModels === null) {
-    process.stderr.write(`openclaw: lemonade-server not detected at ${LEMONADE_HOST}:${LEMONADE_PORT}\n`);
+    process.stderr.write(`${CLI}: lemonade-server not detected at ${LEMONADE_HOST}:${LEMONADE_PORT}\n`);
     process.exit(1);
   }
 
@@ -589,29 +605,29 @@ async function runConfigure(options) {
     modelName: recipe.modelName,
   });
 
-  process.stdout.write(`openclaw: configured Lemonade provider with ${recipe.title}\n`);
+  process.stdout.write(`${CLI}: configured Lemonade provider with ${recipe.title}\n`);
   if (source !== 'github') {
-    process.stdout.write('openclaw: GitHub recipe catalog was unavailable; using the currently loaded Lemonade models instead\n');
+    process.stdout.write(`${CLI}: GitHub recipe catalog was unavailable; using the currently loaded Lemonade models instead\n`);
   }
   if (result.activationResult?.pullMessage) {
-    process.stdout.write(`openclaw: ${result.activationResult.pullMessage}\n`);
+    process.stdout.write(`${CLI}: ${result.activationResult.pullMessage}\n`);
   }
   if (result.activationResult?.loadMessage) {
-    process.stdout.write(`openclaw: ${result.activationResult.loadMessage}\n`);
+    process.stdout.write(`${CLI}: ${result.activationResult.loadMessage}\n`);
   }
   if (!result.recipeIsLoaded) {
-    process.stdout.write(`openclaw: Lemonade did not report ${recipe.title} as loaded yet; check Lemonade for download or backend errors\n`);
+    process.stdout.write(`${CLI}: Lemonade did not report ${recipe.title} as loaded yet; check Lemonade for download or backend errors\n`);
   }
 }
 
 async function runOnboard(options) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    process.stdout.write('openclaw: interactive Lemonade onboarding requires a terminal\n');
+    process.stdout.write(`${CLI}: interactive Lemonade onboarding requires a terminal\n`);
     process.exit(options.firstRun ? 0 : 1);
   }
 
   if (fs.existsSync(configFile) && !options.force) {
-    process.stdout.write(`openclaw: config already exists at ${configFile}\n`);
+    process.stdout.write(`${CLI}: config already exists at ${configFile}\n`);
     process.exit(0);
   }
 
@@ -623,11 +639,11 @@ async function runOnboard(options) {
   const runtimeModels = await probeLemonadeModels();
   if (runtimeModels === null) {
     if (options.firstRun) {
-      process.stdout.write('openclaw: Lemonade is not running on this host; continuing without local model setup\n');
+      process.stdout.write(`${CLI}: Lemonade is not running on this host; continuing without local model setup\n`);
       process.exit(0);
     }
 
-    process.stderr.write(`openclaw: lemonade-server not detected at ${LEMONADE_HOST}:${LEMONADE_PORT}\n`);
+    process.stderr.write(`${CLI}: lemonade-server not detected at ${LEMONADE_HOST}:${LEMONADE_PORT}\n`);
     process.exit(1);
   }
 
@@ -638,17 +654,17 @@ async function runOnboard(options) {
   });
 
   try {
-    process.stdout.write(`\nOpenClaw detected Lemonade at http://${LEMONADE_HOST}:${LEMONADE_PORT}.\n`);
-    process.stdout.write('This will configure OpenClaw to use a local Lemonade model provider.\n');
+    process.stdout.write(`\n${TITLE} detected Lemonade at http://${LEMONADE_HOST}:${LEMONADE_PORT}.\n`);
+    process.stdout.write(`This will configure ${TITLE} to use a local Lemonade model provider.\n`);
     if (source !== 'github') {
       process.stdout.write('GitHub recipe metadata is unavailable right now, so the menu is based on the models Lemonade already has loaded.\n');
     }
 
     if (options.firstRun) {
-      const shouldConfigure = await promptYesNo(rl, 'Configure OpenClaw to use Lemonade now?', true);
+      const shouldConfigure = await promptYesNo(rl, `Configure ${TITLE} to use Lemonade now?`, true);
       if (!shouldConfigure) {
         saveOnboardingState({ decision: 'declined' });
-        process.stdout.write("openclaw: skipped Lemonade setup; run 'openclaw.lemonade' later to enable it\n");
+        process.stdout.write(`${CLI}: skipped Lemonade setup; run '${CLI}.lemonade' later to enable it\n`);
         process.exit(0);
       }
     }
@@ -656,13 +672,13 @@ async function runOnboard(options) {
     const selectedRecipe = await promptForRecipe(rl, recipes, runtimeModels);
     const confirmed = await promptYesNo(
       rl,
-      `Use ${selectedRecipe.title} as OpenClaw's primary Lemonade model?`,
+      `Use ${selectedRecipe.title} as ${TITLE}'s primary Lemonade model?`,
       true
     );
 
     if (!confirmed) {
       saveOnboardingState({ decision: 'declined' });
-      process.stdout.write("openclaw: no changes made; run 'openclaw.lemonade' when you want to configure Lemonade\n");
+      process.stdout.write(`${CLI}: no changes made; run '${CLI}.lemonade' when you want to configure Lemonade\n`);
       process.exit(0);
     }
 
@@ -673,18 +689,18 @@ async function runOnboard(options) {
       modelName: selectedRecipe.modelName,
     });
 
-    process.stdout.write(`\nopenclaw: configured Lemonade provider with ${selectedRecipe.title}\n`);
-    process.stdout.write(`openclaw: primary model → lemonade/${selectedRecipe.modelName}\n`);
+    process.stdout.write(`\n${CLI}: configured Lemonade provider with ${selectedRecipe.title}\n`);
+    process.stdout.write(`${CLI}: primary model → lemonade/${selectedRecipe.modelName}\n`);
     if (result.activationResult?.pullMessage) {
-      process.stdout.write(`openclaw: ${result.activationResult.pullMessage}\n`);
+      process.stdout.write(`${CLI}: ${result.activationResult.pullMessage}\n`);
     }
     if (result.activationResult?.loadMessage) {
-      process.stdout.write(`openclaw: ${result.activationResult.loadMessage}\n`);
+      process.stdout.write(`${CLI}: ${result.activationResult.loadMessage}\n`);
     }
 
     if (!result.recipeIsLoaded) {
       process.stdout.write(
-        `openclaw: Lemonade did not report ${selectedRecipe.title} as loaded yet; check Lemonade for download or backend errors\n`
+        `${CLI}: Lemonade did not report ${selectedRecipe.title} as loaded yet; check Lemonade for download or backend errors\n`
       );
     }
   } finally {
@@ -711,6 +727,6 @@ async function main() {
 }
 
 main().catch(error => {
-  process.stderr.write(`openclaw: setup-providers failed: ${error.message}\n`);
+  process.stderr.write(`${CLI}: setup-providers failed: ${error.message}\n`);
   process.exit(1);
 });

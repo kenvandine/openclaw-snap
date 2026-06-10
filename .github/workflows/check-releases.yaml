@@ -27,7 +27,7 @@ jobs:
           LATEST=$(curl -sL https://registry.npmjs.org/openclaw | node -e "
             let d = '';
             process.stdin.on('data', c => d += c);
-            process.stdin.on('end', () => console.log(JSON.parse(d).['dist-tags'].latest));
+            process.stdin.on('end', () => console.log(JSON.parse(d)['dist-tags'].latest));
           ")
           echo "version=$LATEST" >> $GITHUB_OUTPUT
 

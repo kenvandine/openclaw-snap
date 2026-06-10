@@ -55,6 +55,10 @@ apps:
       OPENCLAW_LOG_LEVEL: error
       OPENCLAW_NO_AUTO_UPDATE: '1'
 
+  # Interactive Lemonade model picker.  Run as: openclaw.lemonade
+  # The shared, env-driven bin/setup-providers.js template reads the CLAW_*
+  # variables below; the values here are the OpenClaw defaults, set explicitly
+  # so other claw snaps can copy this block and only change the values.
   lemonade:
     command: bin/openclaw-lemonade-launch
     environment:
@@ -62,6 +66,9 @@ apps:
       OPENCLAW_CLI_NAME: openclaw
       OPENCLAW_LOG_LEVEL: error
       OPENCLAW_NO_AUTO_UPDATE: '1'
+      CLAW_CLI_NAME: openclaw
+      CLAW_TITLE: OpenClaw
+      CLAW_RECIPE_CATEGORY: openclaw
 
   # Gateway daemon — registered as /snap/bin/openclaw.daemon so the snap
   # wrapper sets up $SNAP and friends before exec-ing the launch script.
