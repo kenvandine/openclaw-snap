@@ -49,3 +49,13 @@ The launchers also ignore legacy `/var/snap/ailab/...` OpenClaw environment over
 **Self-managed systemd user service** — Rather than using snapd's `daemon-scope: user` (which requires `sudo snap set system experimental.user-daemons=true`), the snap registers `openclaw.daemon` as a plain app so snapd creates the `/snap/bin/openclaw.daemon` wrapper. A systemd unit file shipped in the snap is installed to `~/.config/systemd/user/` on first run of any `openclaw` command.
 
 **Classic confinement** — OpenClaw needs broad filesystem access (workspace files, arbitrary tools, code execution) so classic confinement is used. Chromium runs with `--no-sandbox` via a wrapper script since classic confinement provides no AppArmor policy.
+
+## Links
+
+- Upstream project: <https://github.com/openclaw/openclaw> (https://openclaw.ai)
+- Snap packaging: <https://github.com/kenvandine/openclaw-snap>
+- Report a snap issue: <https://github.com/kenvandine/openclaw-snap/issues>
+
+## License
+
+OpenClaw is licensed under **MIT**. This snap packaging lives in [kenvandine/openclaw-snap](https://github.com/kenvandine/openclaw-snap).

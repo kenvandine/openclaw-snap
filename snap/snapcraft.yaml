@@ -39,6 +39,8 @@ title: OpenClaw
 source-code: https://github.com/kenvandine/openclaw-snap
 issues: https://github.com/kenvandine/openclaw-snap/issues
 contact: https://github.com/kenvandine/openclaw-snap/issues
+website: https://openclaw.ai
+license: MIT
 
 grade: stable
 confinement: classic
