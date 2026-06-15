@@ -7,6 +7,7 @@ const https = require('https');
 const os = require('os');
 const path = require('path');
 const readline = require('readline/promises');
+const { spawnSync } = require('child_process');
 
 // ----------------------------------------------------------------------------
 // Per-snap parameters (env-driven, with OpenClaw defaults so this file is
@@ -21,6 +22,9 @@ const readline = require('readline/promises');
 // ----------------------------------------------------------------------------
 const CLI = process.env.CLAW_CLI_NAME || 'openclaw';
 const TITLE = process.env.CLAW_TITLE || 'OpenClaw';
+
+const INFERENCE_SNAPS = (process.env.CLAW_INFERENCE_SNAPS || 'gemma3 gemma4 deepseek-r1 nemotron-3-nano nemotron-3-nano-omni qwen-vl')
+  .split(/\s+/).filter(Boolean);
 
 const LEMONADE_HOST = process.env.CLAW_LEMONADE_HOST || '127.0.0.1';
 const LEMONADE_PORT = Number(process.env.CLAW_LEMONADE_PORT || 13305);
@@ -45,7 +49,8 @@ function usage(exitCode = 0) {
     'commands:\n' +
     '  detect                     exit 0 if lemonade is reachable\n' +
     '  configure [--recipe NAME]  write the CLI config non-interactively\n' +
-    '  onboard [--first-run]      run the interactive lemonade onboarding TUI\n'
+    '  onboard [--first-run]      run the interactive lemonade onboarding TUI\n' +
+    '  inference-snap             run the interactive inference snap picker TUI\n'
   );
   process.exit(exitCode);
 }
@@ -708,6 +713,160 @@ async function runOnboard(options) {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Inference snap discovery and configuration
+// ----------------------------------------------------------------------------
+
+function snapGet(snapName, key) {
+  const result = spawnSync(snapName, ['get', key], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  if (result.status !== 0 || result.error) {
+    return null;
+  }
+  return result.stdout.trim() || null;
+}
+
+function snapInstalled(snapName) {
+  const result = spawnSync('snap', ['list', snapName], {
+    encoding: 'utf8',
+    timeout: 5000,
+    stdio: ['ignore', 'ignore', 'ignore'],
+  });
+  return result.status === 0 && !result.error;
+}
+
+function getInferenceSnapBaseUrl(snapName) {
+  if (!snapInstalled(snapName)) {
+    return null;
+  }
+  const port = snapGet(snapName, 'http.port');
+  if (!port) {
+    return null;
+  }
+  const host = snapGet(snapName, 'http.host') || '127.0.0.1';
+  const basePath = snapGet(snapName, 'http.base-path') || 'v1';
+  return `http://${host}:${port}/${basePath}`;
+}
+
+async function probeInferenceSnapModels(baseUrl) {
+  try {
+    const response = await httpGetUrl(`${baseUrl}/models`);
+    if (response.status !== 200) {
+      return null;
+    }
+    const payload = JSON.parse(response.body);
+    const models = Array.isArray(payload.data) ? payload.data : [];
+    return models.filter(m => m && typeof m.id === 'string');
+  } catch {
+    return null;
+  }
+}
+
+async function discoverInferenceSnaps() {
+  const entries = [];
+  for (const snapName of INFERENCE_SNAPS) {
+    const baseUrl = getInferenceSnapBaseUrl(snapName);
+    if (!baseUrl) {
+      continue;
+    }
+    const models = await probeInferenceSnapModels(baseUrl);
+    if (!models || models.length === 0) {
+      continue;
+    }
+    for (const model of models) {
+      entries.push({ snapName, baseUrl, model });
+    }
+  }
+  return entries;
+}
+
+function writeInferenceSnapProviderConfig(snapName, baseUrl, model) {
+  const existingConfig = readJson(configFile) || {};
+  const existingModels = existingConfig.models && typeof existingConfig.models === 'object'
+    ? existingConfig.models
+    : {};
+  const existingProviders = existingModels.providers && typeof existingModels.providers === 'object'
+    ? existingModels.providers
+    : {};
+
+  const config = {
+    ...existingConfig,
+    gateway: mergeGatewayConfig(existingConfig),
+    update: mergeUpdateConfig(existingConfig),
+    models: {
+      ...existingModels,
+      mode: existingModels.mode || 'replace',
+      providers: {
+        ...existingProviders,
+        [snapName]: {
+          baseUrl,
+          api: 'openai-completions',
+          models: [{
+            id: model.id,
+            name: model.id,
+            reasoning: false,
+            input: ['text'],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 32768,
+            maxTokens: 4096,
+          }],
+        },
+      },
+    },
+    agents: mergeAgentDefaults(existingConfig, `${snapName}/${model.id}`),
+  };
+
+  writeJson(configFile, config);
+}
+
+async function runInferenceSnap() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    process.stdout.write(`${CLI}: interactive inference snap picker requires a terminal\n`);
+    process.exit(1);
+  }
+
+  process.stdout.write(`${CLI}: scanning for inference snaps...\n`);
+  const entries = await discoverInferenceSnaps();
+
+  if (entries.length === 0) {
+    process.stderr.write(`${CLI}: no inference snaps detected\n`);
+    process.stderr.write(`${CLI}: install one with: sudo snap install gemma4\n`);
+    process.stderr.write(`${CLI}: then run '${CLI}.inference-snap' again\n`);
+    process.exit(1);
+  }
+
+  process.stdout.write(`\n${TITLE} detected the following inference snaps:\n\n`);
+  entries.forEach(({ snapName, baseUrl, model }, index) => {
+    process.stdout.write(`  ${index + 1}. ${snapName}/${model.id}  (${baseUrl})\n`);
+  });
+  process.stdout.write('\n');
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  let selected;
+  try {
+    while (true) {
+      const answer = (await rl.question(`Model number [1]: `)).trim();
+      const idx = answer === '' ? 1 : Number.parseInt(answer, 10);
+      if (Number.isInteger(idx) && idx >= 1 && idx <= entries.length) {
+        selected = entries[idx - 1];
+        break;
+      }
+    }
+  } finally {
+    rl.close();
+  }
+
+  writeInferenceSnapProviderConfig(selected.snapName, selected.baseUrl, selected.model);
+  process.stdout.write(`${CLI}: primary model → ${selected.snapName}/${selected.model.id}\n`);
+  process.stdout.write(`${CLI}: wrote ${configFile}\n`);
+}
+
 async function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
 
@@ -720,6 +879,9 @@ async function main() {
       return;
     case 'onboard':
       await runOnboard(options);
+      return;
+    case 'inference-snap':
+      await runInferenceSnap();
       return;
     default:
       usage(1);

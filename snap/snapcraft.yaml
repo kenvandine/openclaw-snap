@@ -84,6 +84,20 @@ apps:
       CLAW_TITLE: OpenClaw
       CLAW_RECIPE_CATEGORY: openclaw
 
+  # Interactive inference snap picker.  Run as: openclaw.inference-snap
+  # Uses the same setup-providers.js template; CLAW_INFERENCE_SNAPS controls
+  # which Canonical inference snaps are probed.
+  inference-snap:
+    command: bin/openclaw-inference-snap-launch
+    environment:
+      PLAYWRIGHT_BROWSERS_PATH: $SNAP/usr/share/ms-playwright
+      OPENCLAW_CLI_NAME: openclaw
+      OPENCLAW_LOG_LEVEL: error
+      OPENCLAW_NO_AUTO_UPDATE: '1'
+      CLAW_CLI_NAME: openclaw
+      CLAW_TITLE: OpenClaw
+      CLAW_INFERENCE_SNAPS: "gemma3 gemma4 deepseek-r1 nemotron-3-nano nemotron-3-nano-omni qwen-vl"
+
   # Gateway daemon — registered as /snap/bin/openclaw.daemon so the snap
   # wrapper sets up $SNAP and friends before exec-ing the launch script.
   # Managed by the systemd user unit installed on first run of 'openclaw'.
@@ -104,6 +118,7 @@ parts:
       bin/openclaw-launch: bin/openclaw-launch
       bin/openclaw-daemon-launch: bin/openclaw-daemon-launch
       bin/openclaw-lemonade-launch: bin/openclaw-lemonade-launch
+      bin/openclaw-inference-snap-launch: bin/openclaw-inference-snap-launch
       bin/openclaw-sanitize-env: bin/openclaw-sanitize-env
       bin/setup-providers.js: bin/setup-providers.js
       share/completions/openclaw.bash: share/completions/openclaw.bash
