@@ -738,6 +738,22 @@ function snapInstalled(snapName) {
 }
 
 function getInferenceSnapBaseUrl(snapName) {
+  // Prefer the standardized status file — avoids the TTY-output CLI issue
+  // where `<snap> get <key>` writes directly to /dev/tty rather than stdout.
+  const statusFile = `/var/snap/${snapName}/current/share/status/status.json`;
+  if (fs.existsSync(statusFile)) {
+    try {
+      const status = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
+      const openaiUrl = status?.endpoints?.openai;
+      if (typeof openaiUrl === 'string' && openaiUrl !== '') {
+        return openaiUrl;
+      }
+    } catch {
+      // fall through to CLI-based detection
+    }
+  }
+
+  // Fallback: CLI-based detection for snaps without a status file
   if (!snapInstalled(snapName)) {
     return null;
   }
