@@ -21,6 +21,9 @@ description: |
   and lets you choose an OpenClaw recipe from the Lemonade recipe catalog.
   You can rerun that setup any time with 'openclaw.lemonade'.
 
+  Or run 'openclaw.inference-snap' to pick a Canonical inference snap
+  (gemma4, gemma3, deepseek-r1, and others) as the provider instead.
+
   SETUP
 
   Requires a valid API key for your chosen LLM provider, OR lemonade-server
