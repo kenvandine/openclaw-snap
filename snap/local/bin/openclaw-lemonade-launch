@@ -7,6 +7,46 @@ sanitize_openclaw_snap_env
 
 mkdir -p "$HOME/workspace"
 
+# Install (or refresh) the systemd user service unit when --auto is passed,
+# so the service is ready even before the main openclaw launcher has run.
+for arg in "$@"; do
+  if [ "$arg" = "--auto" ]; then
+    SERVICE_NAME="openclaw-gateway"
+    unit_src="$SNAP/share/systemd/user/${SERVICE_NAME}.service"
+    unit_dir="$HOME/.config/systemd/user"
+    unit_dst="$unit_dir/${SERVICE_NAME}.service"
+    LEGACY_UNIT="$unit_dir/openclaw.service"
+    if [ -f "$unit_src" ]; then
+      mkdir -p "$unit_dir"
+      if [ ! -f "$unit_dst" ] || ! cmp -s "$unit_src" "$unit_dst"; then
+        cp "$unit_src" "$unit_dst"
+      fi
+      if [ -f "$LEGACY_UNIT" ] && grep -q '/snap/bin/openclaw.daemon' "$LEGACY_UNIT"; then
+        systemctl --user disable --now openclaw >/dev/null 2>&1 || true
+        rm -f "$LEGACY_UNIT"
+      fi
+      systemctl --user daemon-reload 2>/dev/null || true
+      if ! systemctl --user is-enabled "$SERVICE_NAME" >/dev/null 2>&1; then
+        systemctl --user enable --now "$SERVICE_NAME" 2>/dev/null || true
+      fi
+    fi
+    break
+  fi
+done
+
+# --auto maps to 'configure' (non-interactive best-model selection).
+# Interactive invocations use 'onboard --force' which presents the TUI.
+for arg in "$@"; do
+  if [ "$arg" = "--auto" ]; then
+    "$SNAP/bin/node" "$SNAP/bin/setup-providers.js" configure
+    status=$?
+    if [ "$status" -eq 0 ]; then
+      systemctl --user restart openclaw-gateway >/dev/null 2>&1 || true
+    fi
+    exit "$status"
+  fi
+done
+
 "$SNAP/bin/node" "$SNAP/bin/setup-providers.js" onboard --force "$@"
 status=$?
 

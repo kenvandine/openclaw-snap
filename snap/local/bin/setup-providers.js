@@ -76,6 +76,11 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--auto') {
+      options.auto = true;
+      continue;
+    }
+
     if (arg === '--recipe') {
       if (typeof rest[index + 1] !== 'string' || rest[index + 1].startsWith('--')) {
         throw new Error('missing value for --recipe');
