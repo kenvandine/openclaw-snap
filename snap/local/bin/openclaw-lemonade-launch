@@ -7,6 +7,19 @@ sanitize_openclaw_snap_env
 
 mkdir -p "$HOME/workspace"
 
+# Extract --model <name> early; used below to select a specific recipe with
+# --auto.  All other args are passed through to the Node setup script.
+MODEL=""
+_prev=""
+for arg in "$@"; do
+  [ "$_prev" = "--model" ] && { MODEL="$arg"; _prev=""; continue; }
+  case "$arg" in
+    --model=*) MODEL="${arg#--model=}" ;;
+    --model)   _prev="--model" ;;
+  esac
+  _prev="$arg"
+done
+
 # Install (or refresh) the systemd user service unit when --auto is passed,
 # so the service is ready even before the main openclaw launcher has run.
 for arg in "$@"; do
@@ -35,10 +48,16 @@ for arg in "$@"; do
 done
 
 # --auto maps to 'configure' (non-interactive best-model selection).
+# When --model <name> is provided, pass it as --recipe so setup-providers.js
+# selects that exact model rather than using its own preference heuristic.
 # Interactive invocations use 'onboard --force' which presents the TUI.
 for arg in "$@"; do
   if [ "$arg" = "--auto" ]; then
-    "$SNAP/bin/node" "$SNAP/bin/setup-providers.js" configure
+    if [ -n "$MODEL" ]; then
+      "$SNAP/bin/node" "$SNAP/bin/setup-providers.js" configure --recipe "$MODEL"
+    else
+      "$SNAP/bin/node" "$SNAP/bin/setup-providers.js" configure
+    fi
     status=$?
     if [ "$status" -eq 0 ]; then
       systemctl --user restart openclaw-gateway >/dev/null 2>&1 || true
