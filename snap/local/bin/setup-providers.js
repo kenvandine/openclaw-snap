@@ -132,7 +132,11 @@ function inputTypesFromLabels(labels) {
 }
 
 function normalizeModelId(modelId) {
-  return String(modelId || '').replace(/^(user|extra|builtin)\./, '');
+  return String(modelId || '')
+    .replace(/^(user|extra|builtin)\./, '')    // strip namespace prefix (user., builtin., extra.)
+    .replace(/-[QqBbFf]\d+[^.]*\.gguf$/i, '') // strip quant suffix + ext (e.g. -Q4_K_M.gguf)
+    .replace(/\.gguf$/i, '')                   // strip bare .gguf extension
+    .replace(/-GGUF$/i, '');                   // strip -GGUF format marker (recipe names keep it)
 }
 
 function recipeMatchesModel(recipe, model) {
