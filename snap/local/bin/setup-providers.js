@@ -368,12 +368,15 @@ function mergeGatewayConfig(existingConfig) {
     ? existingGateway.auth
     : {};
 
+  const token = existingAuth.token || require('crypto').randomBytes(16).toString('hex');
+
   return {
     ...existingGateway,
     mode: 'local',
     auth: {
       ...existingAuth,
       mode: 'token',
+      token,
     },
   };
 }
