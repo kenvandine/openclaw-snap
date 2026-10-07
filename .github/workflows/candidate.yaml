@@ -56,7 +56,7 @@ jobs:
       - name: Smoke test
         run: |
           sudo snap install --dangerous --classic "${{ steps.build.outputs.snap }}"
-          snap wait system seed.loaded
+          export PATH="/snap/bin:$PATH"
           fail=0
           check() {
             mode=$1; shift
